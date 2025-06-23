@@ -1,21 +1,17 @@
 import streamlit as st
-
 import joblib
 import re
 import nltk
+import string
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
-# === NLTK Setup (only needed once) ===
+# === Download necessary NLTK resources (first run only) ===
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 
-# === Load model and vectorizer ===
-model = joblib.load("fake_review_model.pkl")
-vectorizer = joblib.load("vectorizer.pkl")
-
-# === Preprocessing Function ===
+# === Preprocessing ===
 stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
@@ -28,23 +24,38 @@ def clean_text(text):
     words = [lemmatizer.lemmatize(word) for word in words if word not in stop_words]
     return ' '.join(words)
 
-# === Streamlit UI ===
-st.set_page_config(page_title="Fake Review Detector", page_icon="🕵️‍♀️")
-st.title("🕵️‍♀️ Fake Review Detection System")
-st.markdown("Detect whether a product review is genuine or fake using NLP and Machine Learning.")
+# === Load model and vectorizer ===
+model = joblib.load("fake_review_model.pkl")
+vectorizer = joblib.load("vectorizer.pkl")
 
-# Input
+# === Streamlit UI ===
+st.set_page_config(page_title="🕵️‍♀️ Fake Review Detector", layout="centered")
+st.title("🕵️‍♀️ Fake Review Detection System")
+st.write("Detect whether a product review is **Genuine** or **Fake** using NLP + Machine Learning.")
+
+st.markdown("---")
+
+# === User Input ===
 user_input = st.text_area("✍️ Enter a product review:", height=150)
 
-if st.button("🔍 Detect"):
+if st.button("🔍 Analyze Review"):
     if user_input.strip() == "":
-        st.warning("Please enter a review.")
+        st.warning("⚠️ Please enter a review to analyze.")
     else:
-        cleaned = clean_text(user_input)
-        vec = vectorizer.transform([cleaned])
-        result = model.predict(vec)[0]
+        try:
+            cleaned = clean_text(user_input)
+            vector = vectorizer.transform([cleaned])
+            prediction = model.predict(vector)[0]
+            proba = model.predict_proba(vector)[0]
+            confidence = round(max(proba) * 100, 2)
 
-        if result == "OR":
-            st.success("✅ **Genuine Review Detected**")
-        else:
-            st.error("❌ **Fake Review Detected**")
+            if prediction == 'CG':
+                st.success("✅ Genuine Review Detected")
+                st.info(f"🤖 Confidence: {confidence}%")
+            else:
+                st.error("❌ Fake Review Detected")
+                st.info(f"🤖 Confidence: {confidence}%")
+
+        except Exception as e:
+            st.error("An error occurred while processing the review.")
+            st.text(str(e))
