@@ -1,80 +1,87 @@
-# ✅ Final Improved `app.py` with all suggested features
-
 import streamlit as st
 import joblib
-import numpy as np
-import matplotlib.pyplot as plt
+import nltk
+import re
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-import re
-from fpdf import FPDF
+import pandas as pd
 
-# === Load Model & Vectorizer ===
+# Download resources (only needed once)
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+
+# Load model and vectorizer
 model = joblib.load("fake_review_model.pkl")
 vectorizer = joblib.load("vectorizer.pkl")
 
-# === Initialize Preprocessing Tools ===
+# Init NLP tools
 stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
-# === Cleaning Function ===
+# Text cleaning function
 def clean_text(text):
     text = text.lower()
     text = re.sub(r'<[^>]+>', '', text)
     text = re.sub(r'[^\w\s]', '', text)
     text = re.sub(r'\d+', '', text)
     words = text.split()
-    words = [lemmatizer.lemmatize(word) for word in words if word not in stop_words]
+    words = [lemmatizer.lemmatize(w) for w in words if w not in stop_words]
     return ' '.join(words)
 
-# === Generate PDF ===
-def generate_pdf(review, prediction, confidence):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Fake Review Detection Report", ln=True, align='C')
-    pdf.ln(10)
-    pdf.multi_cell(200, 10, txt=f"Review: {review}")
-    pdf.cell(200, 10, txt=f"Prediction: {prediction}", ln=True)
-    pdf.cell(200, 10, txt=f"Confidence: {confidence:.2%}", ln=True)
-    pdf.output("review_report.pdf")
-
-# === Streamlit UI ===
+# UI Layout
 st.set_page_config(page_title="Fake Review Detector", layout="centered")
-st.title("🕵️ Fake Review Detection System")
-st.markdown("Detect whether a product review is Genuine or Fake using NLP + ML")
+st.title("🕵️‍♀️ Fake Review Detection System")
+st.markdown("Detect whether a product review is **Genuine** or **Fake** using NLP + Machine Learning.")
 
-user_input = st.text_area("📝 Enter a product review:")
+# Input Section
+st.subheader("📝 Enter a product review:")
+user_input = st.text_area(" ", height=150)
 
-if st.button("🔍 Analyze Review") and user_input:
+if st.button("🔍 Analyze Review") and user_input.strip():
     cleaned = clean_text(user_input)
-    vector = vectorizer.transform([cleaned])
-    result = model.predict(vector)[0]
-    probability = model.predict_proba(vector)[0]
-    confidence = max(probability)
+    vec = vectorizer.transform([cleaned])
+    prediction = model.predict(vec)[0]
+    confidence = model.predict_proba(vec).max()
 
-    if result == 'OR':
-        st.error("❌ Fake Review Detected")
-        st.markdown("### 💡 Suggestions to Write a Genuine Review:")
-        st.markdown("""
-        - Mention specific product features  
-        - Share actual usage experience  
-        - Avoid too many emotional/exaggerated words
-        """)
+    # Labeling
+    label = "Genuine ✅" if prediction == "OR" else "Fake ❌"
+    color = "green" if prediction == "OR" else "red"
+
+    # Output
+    st.markdown(f"### 🎯 Prediction: <span style='color:{color}'>{label}</span>", unsafe_allow_html=True)
+    st.markdown(f"**Confidence:** {round(confidence * 100, 2)}%")
+    st.progress(int(confidence * 100))
+
+    # Word Highlights
+    st.subheader("🔍 Key Words in Your Review")
+    matched_words = [w for w in cleaned.split() if w in vectorizer.get_feature_names_out()]
+    if matched_words:
+        st.success("These keywords influenced the model: " + ", ".join(matched_words))
     else:
-        st.success("✅ Genuine Review Detected")
+        st.warning("No important words found from trained data.")
 
-    st.markdown(f"### 🔢 Confidence: **{confidence * 100:.1f}%**")
+    # CSV Download
+    result_df = pd.DataFrame({
+        "Input Review": [user_input],
+        "Prediction": [label],
+        "Confidence (%)": [round(confidence * 100, 2)]
+    })
+    csv = result_df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Result as CSV", data=csv, file_name="review_result.csv", mime='text/csv')
 
-    # Pie Chart
-    fig, ax = plt.subplots()
-    labels = ['Genuine', 'Fake']
-    colors = ['green', 'red']
-    ax.pie(probability, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
-    ax.axis('equal')
-    st.pyplot(fig)
-
-    # Download Button
-    generate_pdf(user_input, 'Genuine' if result != 'OR' else 'Fake', confidence)
-    with open("review_report.pdf", "rb") as f:
-        st.download_button("📥 Download Result Report", f, "review_report.pdf")
+# Optional: Batch Review Checker
+with st.expander("📦 Try Batch Mode (Multiple Reviews)"):
+    batch_input = st.text_area("Paste multiple reviews here (one per line):", height=200)
+    if st.button("📊 Analyze All"):
+        st.subheader("📋 Batch Review Results:")
+        batch_reviews = batch_input.strip().split("\n")
+        for review in batch_reviews:
+            if review.strip():
+                cleaned = clean_text(review)
+                vec = vectorizer.transform([cleaned])
+                pred = model.predict(vec)[0]
+                label = "Genuine ✅" if pred == "OR" else "Fake ❌"
+                st.markdown(f"**Review:** {review}")
+                st.markdown(f"🔎 Result: **{label}**")
+                st.markdown("---")
