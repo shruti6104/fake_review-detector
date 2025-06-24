@@ -1,5 +1,4 @@
 pandas
-fpdf
 scikit-learn
 joblib
 nltk
